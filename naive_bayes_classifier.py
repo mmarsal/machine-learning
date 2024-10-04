@@ -11,7 +11,7 @@ class NaiveBayes:
         :param continuous: list containing a bool for each feature column to be analyzed. True if the feature column
                            contains a continuous feature, False if discrete
         """
-        pass
+        self.continuous = continuous
 
     def fit(self, data: pd.DataFrame, target_name: str):
         """
