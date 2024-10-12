@@ -1,6 +1,7 @@
 import pandas as pd
 import math
 
+
 class NaiveBayes:
     """
     Naive Bayes classifier for continuous and discrete features using pandas
@@ -12,9 +13,9 @@ class NaiveBayes:
                            contains a continuous feature, False if discrete
         """
         self.continuous = continuous
-        self.priors = {} # stores prior probabilities
-        self.likelihoods = {} # stores likelihoods for discrete features
-        self.gaussian_parameters = {} # stores gaussian parameters for continuous features
+        self.priors = {}  # stores prior probabilities
+        self.likelihoods = {}  # stores likelihoods for discrete features
+        self.gaussian_parameters = {}  # stores gaussian parameters for continuous features
 
     def fit(self, data: pd.DataFrame, target_name: str):
         """
@@ -40,7 +41,7 @@ class NaiveBayes:
 
         # Calculate likelihoods and gaussian parameters
         for i, feature in enumerate(features):
-            if self.continuous[i]: # If continuous feature
+            if self.continuous[i]:  # If continuous feature
                 self.gaussian_parameters['disease'][feature] = {
                     'mean': disease_group[feature].mean(),
                     'std': disease_group[feature].std()
@@ -49,7 +50,7 @@ class NaiveBayes:
                     'mean': no_disease_group[feature].mean(),
                     'std': no_disease_group[feature].std()
                 }
-            else: # If discrete feature
+            else:  # If discrete feature
                 self.likelihoods['disease'][feature] = disease_group[feature].value_counts(normalize=True).to_dict()
                 self.likelihoods['no_disease'][feature] = no_disease_group[feature].value_counts(
                     normalize=True).to_dict()
@@ -84,7 +85,7 @@ class NaiveBayes:
             for i, feature in enumerate(row.index):
                 feature_value = row[feature]
 
-                if self.continuous[i]: # If continuous feature
+                if self.continuous[i]:  # If continuous feature
                     # Use help function to calculate Gaussian likelihood
                     mean_disease = self.gaussian_parameters['disease'][feature]['mean']
                     std_disease = self.gaussian_parameters['disease'][feature]['std']
@@ -92,12 +93,13 @@ class NaiveBayes:
 
                     mean_no_disease = self.gaussian_parameters['no_disease'][feature]['mean']
                     std_no_disease = self.gaussian_parameters['no_disease'][feature]['std']
-                    likelihood_no_disease = self.calculate_gaussian_likelihood(feature_value, mean_no_disease, std_no_disease)
+                    likelihood_no_disease = self.calculate_gaussian_likelihood(feature_value, mean_no_disease,
+                                                                               std_no_disease)
 
                     # Add smoothing to avoid probabilities being 0
                     log_probability_disease += math.log(likelihood_disease + 1e-6)
                     log_probability_no_disease += math.log(likelihood_no_disease + 1e-6)
-                else: # If discrete feature
+                else:  # If discrete feature
                     # Use already stored probabilities and add smoothing again
                     likelihood_disease = self.likelihoods['disease'].get(feature, {}).get(feature_value, 1e-6)
                     likelihood_no_disease = self.likelihoods['no_disease'].get(feature, {}).get(feature_value, 1e-6)
@@ -123,11 +125,37 @@ class NaiveBayes:
 
         return pd.DataFrame(probabilities)
 
-    def evaluate_on_data(self, data: pd.DataFrame, test_labels):
+    def evaluate_on_data(self, data: pd.DataFrame, test_labels: pd.DataFrame):
         """
         Predicts a test DataFrame and compares it to the given test_labels.
         :param data: pd.DataFrame containing the test data
-        :param test_labels:
+        :param test_labels: pd.DataFrame containing the test labels
         :return: tuple of overall accuracy and confusion matrix values
         """
-        pass
+        # Call predict function and keep the prediction column
+        results = self.predict_probability(data)
+        predictions = results.iloc[:, -1]
+
+        # Initialize confusion matrix
+        true_positives = 0
+        true_negatives = 0
+        false_positives = 0
+        false_negatives = 0
+
+        # Compare results to the actual labels and calculate confusion matrix values
+        for true_label, predicted_label in zip(test_labels, predictions):
+            if predicted_label == True and true_label == True:
+                true_positives += 1
+            elif predicted_label == False and true_label == False:
+                true_negatives += 1
+            elif predicted_label == True and true_label == False:
+                false_positives += 1
+            elif predicted_label == False and true_label == True:
+                false_negatives += 1
+
+        # Calculate accuracy
+        accuracy = (true_positives + true_negatives) / (
+                true_positives + true_negatives + false_positives + false_negatives)
+
+        return accuracy, {"true_positives": true_positives, "true_negatives": true_negatives,
+                          "false_positives": false_positives, "false_negatives": false_negatives}
