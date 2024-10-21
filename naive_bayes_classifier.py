@@ -100,41 +100,35 @@ class NaiveBayes:
 
         return pd.DataFrame(probabilities)
 
-    def evaluate_on_data(self, data: pd.DataFrame, test_labels: pd.DataFrame):
+    def evaluate_on_data(self, data: pd.DataFrame, test_labels: pd.Series):
         """
         Predicts a test DataFrame and compares it to the given test_labels.
         :param data: pd.DataFrame containing the test data
-        :param test_labels: pd.DataFrame containing the test labels
+        :param test_labels: pd.Series containing the test labels
         :return: tuple of overall accuracy and confusion matrix values
         """
         # Call predict function and keep the prediction column
         results = self.predict_probability(data)
         predictions = results['Prediction']
 
-        # Initialize confusion matrix
-        true_positives = 0
-        true_negatives = 0
-        false_positives = 0
-        false_negatives = 0
+        # Get the unique classes in the test labels (all possible classes)
+        classes = test_labels.unique()
+        num_classes = len(classes)
+        class_to_index = {cls: i for i, cls in enumerate(classes)}  # Map class to index
 
-        # Compare results to the actual labels and calculate confusion matrix values
+        # Initialize confusion matrix (square matrix of size num_classes x num_classes)
+        confusion_matrix = [[0 for _ in range(num_classes)] for _ in range(num_classes)]
+
+        # Populate the confusion matrix
         for true_label, predicted_label in zip(test_labels, predictions):
-            if predicted_label == True and true_label == True:
-                true_positives += 1
-            elif predicted_label == False and true_label == False:
-                true_negatives += 1
-            elif predicted_label == True and true_label == False:
-                false_positives += 1
-            elif predicted_label == False and true_label == True:
-                false_negatives += 1
+            true_index = class_to_index[true_label]  # Get index of true label
+            predicted_index = class_to_index[predicted_label]  # Get index of predicted label
+            confusion_matrix[true_index][predicted_index] += 1  # Increment corresponding cell
 
-        # Calculate accuracy
-        accuracy = (true_positives + true_negatives) / (
-                true_positives + true_negatives + false_positives + false_negatives)
+        # Calculate accuracy (correct predictions / total predictions)
+        correct_predictions = sum(confusion_matrix[i][i] for i in range(num_classes))
+        total_predictions = len(test_labels)
+        accuracy = correct_predictions / total_predictions
 
-        return accuracy, {
-            "true_positives": true_positives,
-            "true_negatives": true_negatives,
-            "false_positives": false_positives,
-            "false_negatives": false_negatives
-        }
+        # Return accuracy and confusion matrix
+        return accuracy, confusion_matrix
