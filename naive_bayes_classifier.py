@@ -24,36 +24,25 @@ class NaiveBayes:
         :param data: pd.DataFrame containing training data (including the label column)
         :param target_name: str Name of the label column in data
         """
-        # Split the training data into two groups (disease/no disease)
+        # Split the training data into groups
         grouped = data.groupby(target_name)
-        no_disease_group = grouped.get_group(False)
-        disease_group = grouped.get_group(True)
+
+        # Total number of samples
+        total_count = len(data)
+
+        # Drop label column and setup features
+        features = data.columns.drop(target_name)
 
         # Calculate prior probabilities
-        total_count = len(data)
-        self.priors['disease'] = len(disease_group) / total_count
-        self.priors['no_disease'] = len(no_disease_group) / total_count
+        self.priors = grouped.size().div(total_count).to_dict()
 
-        # Drop label column and setup parameters
-        features = data.columns.drop(target_name)
-        self.likelihoods = {'disease': {}, 'no_disease': {}}
-        self.gaussian_parameters = {'disease': {}, 'no_disease': {}}
-
-        # Calculate likelihoods and gaussian parameters
+        # Calculate likelihoods and Gaussian parameters
         for i, feature in enumerate(features):
             if self.continuous[i]:  # If continuous feature
-                self.gaussian_parameters['disease'][feature] = {
-                    'mean': disease_group[feature].mean(),
-                    'std': disease_group[feature].std()
-                }
-                self.gaussian_parameters['no_disease'][feature] = {
-                    'mean': no_disease_group[feature].mean(),
-                    'std': no_disease_group[feature].std()
-                }
+                self.gaussian_parameters[feature] = grouped[feature].agg(['mean', 'std']).to_dict(orient='index')
             else:  # If discrete feature
-                self.likelihoods['disease'][feature] = disease_group[feature].value_counts(normalize=True).to_dict()
-                self.likelihoods['no_disease'][feature] = no_disease_group[feature].value_counts(
-                    normalize=True).to_dict()
+                likelihood = grouped[feature].value_counts(normalize=True).unstack(fill_value=0)
+                self.likelihoods[feature] = likelihood.to_dict(orient='index')
 
     def calculate_gaussian_likelihood(self, feature_value: float, mean: float, std: float):
         """
@@ -77,50 +66,36 @@ class NaiveBayes:
         probabilities = []  # Store the final probabilities
 
         for _, row in data.iterrows():
-            # Convert to log to avoid underflow
-            log_probability_disease = math.log(self.priors['disease'])
-            log_probability_no_disease = math.log(self.priors['no_disease'])
+            log_probabilities = {label: math.log(self.priors[label]) for label in
+                                 self.priors}  # Initialize log probabilities for all classes
 
             # Calculate probabilities
             for i, feature in enumerate(row.index):
                 feature_value = row[feature]
 
                 if self.continuous[i]:  # If continuous feature
-                    # Use help function to calculate Gaussian likelihood
-                    mean_disease = self.gaussian_parameters['disease'][feature]['mean']
-                    std_disease = self.gaussian_parameters['disease'][feature]['std']
-                    likelihood_disease = self.calculate_gaussian_likelihood(feature_value, mean_disease, std_disease)
-
-                    mean_no_disease = self.gaussian_parameters['no_disease'][feature]['mean']
-                    std_no_disease = self.gaussian_parameters['no_disease'][feature]['std']
-                    likelihood_no_disease = self.calculate_gaussian_likelihood(feature_value, mean_no_disease,
-                                                                               std_no_disease)
-
-                    # Add smoothing to avoid probabilities being 0
-                    log_probability_disease += math.log(likelihood_disease + 1e-6)
-                    log_probability_no_disease += math.log(likelihood_no_disease + 1e-6)
+                    for label in self.priors:
+                        mean = self.gaussian_parameters[feature][label]['mean']
+                        std = self.gaussian_parameters[feature][label]['std']
+                        likelihood = self.calculate_gaussian_likelihood(feature_value, mean, std)
+                        # Add smoothing to avoid underflow
+                        log_probabilities[label] += math.log(likelihood + 1e-6)
                 else:  # If discrete feature
-                    # Use already stored probabilities and add smoothing again
-                    likelihood_disease = self.likelihoods['disease'].get(feature, {}).get(feature_value, 1e-6)
-                    likelihood_no_disease = self.likelihoods['no_disease'].get(feature, {}).get(feature_value, 1e-6)
-
-                    log_probability_disease += math.log(likelihood_disease + 1e-6)
-                    log_probability_no_disease += math.log(likelihood_no_disease + 1e-6)
+                    for label in self.priors:
+                        likelihood = self.likelihoods[feature].get(label, {}).get(feature_value, 1e-6)
+                        log_probabilities[label] += math.log(likelihood + 1e-6)
 
             # Convert back to normal probabilities
-            probability_disease = math.exp(log_probability_disease)
-            probability_no_disease = math.exp(log_probability_no_disease)
-
-            # Ensure they sum up to 1 and calculate proportion
-            total_probabilities = probability_disease + probability_no_disease
-            probability_disease /= total_probabilities
-            probability_no_disease /= total_probabilities
+            total_probabilities = sum(math.exp(log_prob) for log_prob in log_probabilities.values())
+            normalized_probabilities = {label: math.exp(log_prob) / total_probabilities for label, log_prob in
+                                        log_probabilities.items()}
 
             # Store the probabilities and final classification
+            prediction = max(normalized_probabilities,
+                             key=normalized_probabilities.get)  # Class with the highest probability
             probabilities.append({
-                'P(disease)': probability_disease,
-                'P(no_disease)': probability_no_disease,
-                'Prediction': True if probability_disease > probability_no_disease else False
+                **normalized_probabilities,  # Spread the probabilities into the dictionary
+                'Prediction': prediction
             })
 
         return pd.DataFrame(probabilities)
@@ -134,7 +109,7 @@ class NaiveBayes:
         """
         # Call predict function and keep the prediction column
         results = self.predict_probability(data)
-        predictions = results.iloc[:, -1]
+        predictions = results['Prediction']
 
         # Initialize confusion matrix
         true_positives = 0
@@ -157,5 +132,9 @@ class NaiveBayes:
         accuracy = (true_positives + true_negatives) / (
                 true_positives + true_negatives + false_positives + false_negatives)
 
-        return accuracy, {"true_positives": true_positives, "true_negatives": true_negatives,
-                          "false_positives": false_positives, "false_negatives": false_negatives}
+        return accuracy, {
+            "true_positives": true_positives,
+            "true_negatives": true_negatives,
+            "false_positives": false_positives,
+            "false_negatives": false_negatives
+        }
