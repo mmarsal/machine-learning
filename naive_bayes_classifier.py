@@ -1,7 +1,6 @@
 import pandas as pd
 import math
 
-
 class NaiveBayes:
     """
     Naive Bayes classifier for continuous and discrete features using pandas
