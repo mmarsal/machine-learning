@@ -145,7 +145,6 @@ class NaiveBayes:
         else:
             return 'healthy'
 
-
     # Function to check data difference between training and test sets
     def check_data_difference(self, train_data: pd.DataFrame, test_data: pd.DataFrame):
         """
