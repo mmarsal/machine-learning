@@ -131,3 +131,46 @@ class NaiveBayes:
 
         # Return accuracy and confusion matrix
         return accuracy, confusion_matrix
+
+    def classify_disease(self, row: pd.Series):
+        """
+        Function to classify the class based on the inflammation and nephritis columns.
+        :param row: pd.Series row to be classified
+        :return: str class
+        """
+        if row['inflammation'] and row['nephritis']:  # Both inflammation and nephritis are True
+            return 'very sick'
+        elif row['inflammation'] or row['nephritis']:  # One of them is True
+            return 'sick'
+        else:
+            return 'healthy'
+
+
+    # Function to check data difference between training and test sets
+    def check_data_difference(self, train_data: pd.DataFrame, test_data: pd.DataFrame):
+        """
+        Checks for overlap between training and test datasets by identifying the percentage of unique rows in the test set
+        that are not present in the training set. Also checks if any rows are identical by index to confirm test and training data are not the same.
+
+        :param train_data: pd.DataFrame, the training dataset
+        :param test_data: pd.DataFrame, the test dataset
+        :return: float, percentage of unique test samples not found in the training data
+        """
+        # Concatenate training and test data, keeping only unique rows
+        combined_data = pd.concat([train_data, test_data]).drop_duplicates()
+
+        # Count the unique rows in the test data that do not overlap with training data
+        unique_test_samples = len(test_data) + (len(train_data) - len(combined_data))
+
+        # Calculate percentage of unique test samples compared to the test dataset
+        percentage_unique_test = (unique_test_samples / len(test_data)) * 100
+
+        # Check for exact matches by index
+        matching_indexes = train_data.index.intersection(test_data.index)
+
+        if not matching_indexes.empty:  # True if there is any overlap:
+            has_identical_rows = "There are identical rows between train and test data based on index."
+        else:
+            has_identical_rows = "There are no identical rows between train and test data based on index."
+
+        return percentage_unique_test, has_identical_rows
